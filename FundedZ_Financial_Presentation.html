@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FundedZ — Financial Model, KPIs &amp; Sensitivity</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+  :root{
+    --red:#A32020;--red-dark:#7A1818;--accent:#82141E;--red-light:#EA9595;
+    --red-lighter:#F4CACA;--pink:#DB536A;--crimson:#BA2741;--gray-dark:#464646;
+    --gray:#7D7D7D;--pos:#1AAB40;--neg:#D64554;
+    --bg:#1c1c1e;--bg-soft:#262629;--card:#2e2e31;--line:#444448;--fg:#FFFFFF;--muted:#b7b7bb;
+    --serif:Georgia,'Times New Roman',serif;--sans:Arial,Helvetica,sans-serif;
+    --bar:52px;
+  }
+  /* Light theme overrides */
+  body.light{
+    --bg:#f3f3f5;--bg-soft:#ffffff;--card:#ffffff;--line:#e2e2e6;--fg:#1c1c1e;--muted:#5b5b62;
+  }
+  body.light .eyebrow,body.light .cur,body.light .driver .d-val{color:var(--accent)}
+  body.light thead th{background:var(--card);color:var(--accent)}
+  body.light .topbar{background:rgba(255,255,255,.92)}
+  body.light .kpi,body.light .skpi{box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  body.light .panel,body.light .controls{box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  body.light .tab-panel#cover{background:radial-gradient(900px 480px at 80% 12%,rgba(163,32,32,.16),transparent 60%),radial-gradient(700px 420px at 5% 95%,rgba(130,20,30,.10),transparent 60%),linear-gradient(180deg,#fbfbfc,#f1f1f3)}
+
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;overflow:hidden}
+  body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;transition:background .25s,color .25s}
+  h1,h2,h3,h4{font-family:var(--serif);font-weight:700;margin:0;letter-spacing:.2px}
+
+  /* ---------- Top bar ---------- */
+  .topbar{position:fixed;top:0;left:0;right:0;height:var(--bar);z-index:50;display:flex;align-items:center;gap:14px;padding:0 18px;background:rgba(20,20,22,.92);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:9px;font-family:var(--serif);font-weight:700;font-size:17px}
+  .brand .mark{width:13px;height:20px;background:var(--red);display:inline-block;transform:skewX(-12deg);box-shadow:5px 0 0 var(--accent)}
+  .nav{display:flex;gap:3px;margin-left:auto;flex-wrap:nowrap;overflow-x:auto}
+  .nav a{color:var(--muted);text-decoration:none;font-size:13px;padding:6px 12px;border-radius:6px;border:1px solid transparent;transition:.15s;white-space:nowrap;cursor:pointer}
+  .nav a:hover{color:#fff;background:var(--card)}
+  .nav a.active{color:#fff;background:var(--red);border-color:var(--accent)}
+  .theme-btn{flex:0 0 auto;margin-left:6px;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:7px;padding:6px 11px;cursor:pointer;white-space:nowrap;transition:.15s}
+  .theme-btn:hover{border-color:var(--accent);color:var(--red)}
+
+  /* ---------- Tab panels (one screen each) ---------- */
+  .tab-panel{position:fixed;top:var(--bar);left:0;right:0;bottom:0;display:none;padding:16px 22px 18px;animation:fade .3s ease}
+  .tab-panel.active{display:block}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .wrap{max-width:1340px;height:100%;margin:0 auto;display:flex;flex-direction:column;min-height:0}
+
+  .head{flex:0 0 auto;display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin-bottom:12px}
+  .eyebrow{text-transform:uppercase;letter-spacing:2.5px;font-size:11px;color:var(--red-light);font-weight:700;margin-bottom:4px}
+  .sec-title{font-size:24px;line-height:1.1}
+  .head-note{color:var(--muted);font-size:12.5px;max-width:520px;text-align:right}
+  .badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:999px;background:rgba(163,32,32,.18);border:1px solid var(--accent);color:var(--red-light);margin-left:6px;vertical-align:middle}
+
+  .body{flex:1 1 auto;min-height:0;display:grid;gap:14px}
+
+  /* ---------- Panels ---------- */
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .panel h3{font-size:14px}
+  .panel .ph{font-size:11px;color:var(--muted);margin:2px 0 8px}
+  .chart-box{position:relative;flex:1 1 auto;min-height:0}
+  canvas{max-height:100%}
+
+  .col{display:flex;flex-direction:column;gap:14px;min-height:0}
+  .col>.panel{flex:1 1 0}
+
+  /* ---------- KPI cards ---------- */
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .kpi{background:linear-gradient(160deg,var(--card),var(--bg-soft));border:1px solid var(--line);border-radius:11px;padding:11px 13px;position:relative;overflow:hidden}
+  .kpi::after{content:"";position:absolute;top:0;left:0;width:4px;height:100%;background:var(--red)}
+  .kpi.pos::after{background:var(--pos)} .kpi.alt::after{background:var(--crimson)}
+  .kpi .label{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+  .kpi .val{font-family:var(--serif);font-size:22px;font-weight:700;margin-top:4px;line-height:1.05}
+  .kpi .note{font-size:11px;color:var(--gray);margin-top:3px}
+
+  /* ---------- Tables ---------- */
+  .tbl-wrap{flex:1 1 auto;min-height:0;overflow:auto}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  thead th{position:sticky;top:0;background:var(--card);text-transform:uppercase;letter-spacing:.5px;font-size:10px;color:var(--red-light);border-bottom:2px solid var(--accent)}
+  tr.total td{font-weight:700;color:#fff;border-top:2px solid var(--accent);background:rgba(163,32,32,.10)}
+  td.pos{color:var(--pos)} td.neg{color:var(--neg)}
+
+  /* ---------- Drivers ---------- */
+  .drivers{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-height:0;overflow:auto}
+  .driver{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--bg-soft);border:1px solid var(--line);border-radius:9px;padding:8px 11px}
+  .driver .d-name{font-size:12px}
+  .driver .d-name small{display:block;color:var(--gray);font-size:10.5px}
+  .driver .d-val{font-family:var(--serif);font-weight:700;color:var(--red-light);font-size:16px;white-space:nowrap}
+
+  /* ---------- Callout ---------- */
+  .callout{flex:0 0 auto;background:linear-gradient(160deg,rgba(163,32,32,.18),rgba(130,20,30,.06));border:1px solid var(--accent);border-left:4px solid var(--red);border-radius:9px;padding:10px 13px;font-size:12.5px;color:#f1dede}
+
+  /* ---------- Cover ---------- */
+  #cover .wrap{justify-content:center}
+  .cover-inner{position:relative}
+  #cover h1{font-size:50px;line-height:1.05;max-width:16ch}
+  #cover .sub{font-size:18px;color:var(--muted);margin-top:14px;max-width:62ch}
+  #cover .tags{display:flex;gap:9px;flex-wrap:wrap;margin-top:22px}
+  #cover .tag{font-size:11px;letter-spacing:1px;text-transform:uppercase;padding:7px 13px;border:1px solid var(--line);border-radius:999px;color:var(--red-light)}
+  #cover .foot{color:var(--gray);font-size:12px;margin-top:26px}
+  .tab-panel#cover{background:radial-gradient(900px 480px at 80% 12%,rgba(163,32,32,.40),transparent 60%),radial-gradient(700px 420px at 5% 95%,rgba(130,20,30,.28),transparent 60%),linear-gradient(180deg,#161617,#1c1c1e)}
+
+  /* ---------- Sensitivity ---------- */
+  .controls{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;min-height:0}
+  .controls h3{font-size:14px}
+  .controls .ph{font-size:11px;color:var(--muted);margin:2px 0 9px}
+  .sliders{flex:1 1 auto;min-height:0;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:9px 16px;align-content:start}
+  .ctrl .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
+  .ctrl label{font-size:11.5px}
+  .ctrl .cur{font-family:var(--serif);font-weight:700;color:var(--red-light);font-size:13px}
+  .ctrl input[type=range]{width:100%;-webkit-appearance:none;height:4px;border-radius:4px;background:var(--line);outline:none;margin:0}
+  .ctrl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--red);border:2px solid #fff;cursor:pointer}
+  .ctrl input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--red);border:2px solid #fff;cursor:pointer}
+  .ctrl .base{font-size:10px;color:var(--gray);margin-top:1px}
+  .btn{flex:0 0 auto;margin-top:10px;padding:9px;border:1px solid var(--accent);background:transparent;color:#fff;border-radius:8px;font-family:var(--sans);font-size:12.5px;cursor:pointer;transition:.15s}
+  .btn:hover{background:var(--red)}
+  .skpi{background:linear-gradient(160deg,var(--card),var(--bg-soft));border:1px solid var(--line);border-radius:11px;padding:10px 12px}
+  .skpi .label{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+  .skpi .val{font-family:var(--serif);font-size:19px;font-weight:700;margin-top:4px}
+  .skpi .delta{font-size:11px;margin-top:3px;font-weight:700}
+  .delta.up{color:var(--pos)} .delta.down{color:var(--neg)} .delta.flat{color:var(--gray)}
+
+  /* ---------- Grid templates per tab ---------- */
+  #kpis .body{grid-template-rows:auto 1fr}
+  #kpis .charts3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;min-height:0}
+  #revenue .body{grid-template-rows:auto 1fr}
+  #revenue .charts2{display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:0}
+  #profit .body{grid-template-columns:1.45fr 1fr}
+  #profit .rcol{display:flex;flex-direction:column;gap:14px;min-height:0}
+  #profit .rcol .panel:first-child{flex:1 1 0}
+  #profit .rcol .panel:last-child{flex:1 1 0}
+  #cash .body{grid-template-rows:auto 1fr auto;gap:12px}
+  #cash .cards3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  #cash .charts2{display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:0}
+  #sensitivity .body{grid-template-rows:auto 1fr;gap:12px}
+  #sensitivity .skpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  #sensitivity .lower{display:grid;grid-template-columns:420px 1fr;gap:14px;min-height:0}
+  #sensitivity .charts2{display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:0}
+
+  @media(max-width:1024px){
+    #revenue .body,#profit .body,#cash .charts2,#sensitivity .lower,#sensitivity .charts2,#kpis .charts3,#cash .cards3{grid-template-columns:1fr}
+    .kpi-grid,#sensitivity .skpis{grid-template-columns:repeat(2,1fr)}
+    .head-note{display:none}
+    #cover h1{font-size:34px}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="mark"></span> FundedZ</div>
+  <nav class="nav">
+    <a class="active" href="#cover">Overview</a>
+    <a href="#kpis">KPIs</a>
+    <a href="#revenue">Revenue</a>
+    <a href="#profit">Profitability</a>
+    <a href="#cash">Free Cash Flow</a>
+    <a href="#sensitivity">Sensitivity</a>
+  </nav>
+  <button class="theme-btn" id="themeBtn" title="Toggle dark / light">☀ Light</button>
+</div>
+
+<!-- ===================== COVER ===================== -->
+<div class="tab-panel active" id="cover">
+  <div class="wrap"><div class="cover-inner">
+    <div class="eyebrow">Prop Trading Firm · 6-Month Financial Model</div>
+    <h1>FundedZ Financial Model, KPIs &amp; Sensitivity</h1>
+    <p class="sub">A consolidated view of the revenue engine, unit economics, profitability and free cash flow — with a live sensitivity lab on the assumptions that move the business.</p>
+    <div class="tags">
+      <span class="tag">Revenue Drivers</span><span class="tag">Profitability</span>
+      <span class="tag">Free Cash Flow</span><span class="tag">Interactive Sensitivity</span>
+    </div>
+    <div class="foot">All figures USD · 6-month horizon</div>
+  </div></div>
+</div>
+
+<!-- ===================== KPIs ===================== -->
+<section class="tab-panel" id="kpis">
+  <div class="wrap">
+    <div class="head">
+      <div><div class="eyebrow">Executive Summary</div><h2 class="sec-title">Headline KPIs — 6-Month Base Case</h2></div>
+      <div class="head-note">Strongly cash-generative: net revenue covers all setup, operating and marketing burn — no external launch capital required.</div>
+    </div>
+    <div class="body">
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="charts3">
+        <div class="panel"><h3>Challenges Sold</h3><div class="ph">Per month · 20% MoM growth</div><div class="chart-box"><canvas id="kpiSoldChart"></canvas></div></div>
+        <div class="panel"><h3>EBITDA by Month</h3><div class="ph">Net rev − OpEx − Mktg − Payouts</div><div class="chart-box"><canvas id="kpiEbitdaChart"></canvas></div></div>
+        <div class="panel"><h3>EBITDA Margin</h3><div class="ph">% of gross revenue</div><div class="chart-box"><canvas id="kpiMarginChart"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== REVENUE ===================== -->
+<section class="tab-panel" id="revenue">
+  <div class="wrap">
+    <div class="head">
+      <div><div class="eyebrow">Revenue Engine</div><h2 class="sec-title">Revenue Drivers</h2></div>
+      <div class="head-note">Day-1 founder burst compounds at 20% MoM; gross revenue converts to net after refunds, processing fees and affiliate commissions.</div>
+    </div>
+    <div class="body">
+      <div class="panel"><h3>Revenue Detail</h3><div class="ph">Monthly, USD</div><div class="tbl-wrap"><table id="revTable"></table></div></div>
+      <div class="charts2">
+        <div class="panel"><h3>Sales Volume Build</h3><div class="ph">Day-1 founders + paid acquisition, compounding 20% MoM</div><div class="chart-box"><canvas id="salesChart"></canvas></div></div>
+        <div class="panel"><h3>Gross → Net Revenue</h3><div class="ph">Gross vs net after variable costs</div><div class="chart-box"><canvas id="revChart"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PROFITABILITY ===================== -->
+<section class="tab-panel" id="profit">
+  <div class="wrap">
+    <div class="head">
+      <div><div class="eyebrow">Profitability</div><h2 class="sec-title">From Revenue to EBITDA</h2></div>
+      <div class="head-note">Net revenue less OpEx, marketing and the trader payout liability — which only begins in Month 3 as the first cohort gets funded.</div>
+    </div>
+    <div class="body">
+      <div class="col">
+        <div class="panel"><h3>Cost &amp; Payout Stack vs Net Revenue</h3><div class="ph">Stacked monthly cost components</div><div class="chart-box"><canvas id="costChart"></canvas></div></div>
+        <div class="panel"><h3>EBITDA &amp; Margin Trend</h3><div class="ph">EBITDA (bars) and margin (line)</div><div class="chart-box"><canvas id="profitChart"></canvas></div></div>
+      </div>
+      <div class="rcol">
+        <div class="panel"><h3>6-Month Cost Split</h3><div class="ph">Where the money goes</div><div class="chart-box"><canvas id="costSplitChart"></canvas></div></div>
+        <div class="panel"><h3>P&amp;L Detail</h3><div class="ph">Monthly, USD</div><div class="tbl-wrap"><table id="plTable"></table></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FREE CASH FLOW ===================== -->
+<section class="tab-panel" id="cash">
+  <div class="wrap">
+    <div class="head">
+      <div><div class="eyebrow">Liquidity</div><h2 class="sec-title">Free Cash Flow &amp; Capital Required</h2></div>
+      <div class="head-note">Payouts are funded from incoming revenue, not a reserve. Cumulative EBITDA is the FCF proxy; the capital bridge shows self-funding.</div>
+    </div>
+    <div class="body">
+      <div class="cards3" id="cashKpis"></div>
+      <div class="charts2">
+        <div class="panel"><h3>Cumulative Free Cash Flow</h3><div class="ph">Running cumulative EBITDA</div><div class="chart-box"><canvas id="cumChart"></canvas></div></div>
+        <div class="panel"><h3>Launch Capital Bridge</h3><div class="ph">Setup + OpEx + Marketing − Net revenue</div><div class="chart-box"><canvas id="capChart"></canvas></div></div>
+      </div>
+      <div class="callout" id="capNote"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SENSITIVITY ===================== -->
+<section class="tab-panel" id="sensitivity">
+  <div class="wrap">
+    <div class="head">
+      <div><div class="eyebrow">Sensitivity Lab <span class="badge">Interactive</span></div><h2 class="sec-title">Sensitivity on the Assumptions That Matter</h2></div>
+      <div class="head-note">Move any driver and the model recalculates live. The tornado ranks each assumption's impact on 6-mo EBITDA when flexed ±20%.</div>
+    </div>
+    <div class="body">
+      <div class="skpis" id="sensKpis"></div>
+      <div class="lower">
+        <div class="controls">
+          <h3>Assumption Drivers</h3><div class="ph">Flow into revenue, payouts &amp; cash flow</div>
+          <div class="sliders" id="sliders"></div>
+          <button class="btn" id="resetBtn">Reset to base case</button>
+        </div>
+        <div class="charts2">
+          <div class="panel"><h3>EBITDA — Base vs Scenario</h3><div class="ph">Monthly EBITDA at current settings</div><div class="chart-box"><canvas id="sensEbitdaChart"></canvas></div></div>
+          <div class="panel"><h3>Tornado — Driver Impact</h3><div class="ph">±20% flex · Δ 6-mo EBITDA</div><div class="chart-box"><canvas id="tornadoChart"></canvas></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+/* =================================================================
+   FundedZ model — faithful re-implementation of the Excel workbook
+   (reconciled exactly to the workbook's computed values)
+   ================================================================= */
+const MONTHS = 6;
+const sum = a => a.reduce((x,y)=>x+y,0);
+
+const BASE = {
+  day1Sales:5584.21052631579, addM1:150, growth:0.20, arpu:240.5,
+  chargeback:0.02, processing:0.035, affShare:0.30, affRate:0.15,
+  p1pass:0.25, p2pass:0.40, timeToFunded:2, gpRate:0.05, split:0.80,
+  pctEarning:0.40, churn:0.15, refundPct:1.00, acctSize:37500
+};
+const OPEX     = [133856,134856,138056,139456,143256,144356];
+const MKT_BASE = [69000,80000,93700,103700,116500,124500];
+const ONE_TIME = 175000;
+
+function computeModel(p){
+  const sold=[]; sold[0]=p.day1Sales+p.addM1;
+  for(let m=1;m<MONTHS;m++) sold[m]=sold[m-1]*(1+p.growth);
+
+  const gross  = sold.map(s=>s*p.arpu);
+  const refunds= gross.map(g=>-g*p.chargeback);
+  const proc   = gross.map((g,i)=>-(g+refunds[i])*p.processing);
+  const aff    = gross.map(g=>-g*p.affShare*p.affRate);
+  const net    = gross.map((g,i)=>g+refunds[i]+proc[i]+aff[i]);
+
+  const newFunded=[],churn=[],active=[];
+  for(let m=0;m<MONTHS;m++){const n=m+1; newFunded[m]=(n-p.timeToFunded<=0)?0:sold[(n-p.timeToFunded)-1]*p.p1pass*p.p2pass;}
+  for(let m=0;m<MONTHS;m++){ if(m===0){churn[m]=0;active[m]=newFunded[m];} else {churn[m]=-active[m-1]*p.churn;active[m]=active[m-1]+newFunded[m]+churn[m];} }
+
+  const payoutPer = p.acctSize*p.gpRate*p.split;
+  const earners   = active.map(a=>a*p.pctEarning);
+  const profitShare=earners.map(e=>e*payoutPer);
+  const feeRefund = newFunded.map(f=>f*p.refundPct*p.arpu);
+  const payout    = profitShare.map((ps,i)=>ps+feeRefund[i]);
+
+  const mkt    = MKT_BASE.map((b,i)=>b+(-aff[i]));
+  const ebitda = net.map((nr,i)=>nr-OPEX[i]-mkt[i]-payout[i]);
+  const margin = ebitda.map((e,i)=>gross[i]?e/gross[i]:0);
+  const cum=[]; let run=0; for(let m=0;m<MONTHS;m++){run+=ebitda[m];cum[m]=run;}
+
+  const totals={sold:sum(sold),gross:sum(gross),net:sum(net),opex:sum(OPEX),mkt:sum(mkt),payout:sum(payout),ebitda:sum(ebitda),refunds:sum(refunds),proc:sum(proc),aff:sum(aff)};
+  totals.capital=ONE_TIME+totals.opex+totals.mkt-totals.net;
+  totals.margin=totals.ebitda/totals.gross;
+  totals.activeEnd=active[MONTHS-1];
+  return {sold,gross,refunds,proc,aff,net,newFunded,active,payout,mkt,ebitda,margin,cum,totals};
+}
+const BASE_MODEL = computeModel(BASE);
+
+/* ---------------- formatting ---------------- */
+const fUSD  = v => (v<0?'-':'')+'$'+Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0});
+const fUSDk = v => { const a=Math.abs(v); let s; if(a>=1e6)s='$'+(a/1e6).toFixed(2)+'M'; else if(a>=1e3)s='$'+(a/1e3).toFixed(0)+'K'; else s='$'+a.toFixed(0); return (v<0?'-':'')+s; };
+/* one-decimal money formatter in millions — used for all in-graph data labels */
+const fUSDk1 = v => (v<0?'-':'')+'$'+(Math.abs(v)/1e6).toFixed(1)+'M';
+const fNum  = v => Math.round(v).toLocaleString('en-US');
+const fPct  = v => (v*100).toFixed(1)+'%';
+const MLAB  = ['M1','M2','M3','M4','M5','M6'];
+
+/* ---------------- Chart.js theme ---------------- */
+const C={red:'#A32020',redDark:'#7A1818',accent:'#82141E',redLight:'#EA9595',redLighter:'#F4CACA',pink:'#DB536A',crimson:'#BA2741',grayDark:'#464646',gray:'#7D7D7D',pos:'#1AAB40',neg:'#D64554'};
+Chart.defaults.color='#c9c9cd';
+Chart.defaults.font.family='Arial, Helvetica, sans-serif';
+Chart.defaults.font.size=11;
+Chart.defaults.maintainAspectRatio=false;
+Chart.defaults.plugins.legend.labels.boxWidth=11;
+Chart.defaults.plugins.legend.labels.usePointStyle=true;
+Chart.defaults.plugins.legend.labels.padding=8;
+if(window.ChartDataLabels) Chart.register(ChartDataLabels);
+Chart.defaults.set('plugins.datalabels',{
+  color:'#fff',font:{weight:'bold',size:9},clamp:true,
+  formatter:v=>fUSDk1(v),
+  display:ctx=>{const v=ctx.dataset.data[ctx.dataIndex];return v!==null&&v!==undefined;}
+});
+const fNumK = v => Math.abs(v)>=1000 ? (v/1000).toFixed(1)+'K' : Math.round(v).toString();
+const DL_BAR={anchor:'center',align:'center'};
+const DL_LINE={anchor:'end',align:'top',offset:2,color:'#fff',backgroundColor:'rgba(20,20,22,.65)',borderRadius:3,padding:{top:2,bottom:2,left:3,right:3}};
+const GRID={color:'rgba(255,255,255,.07)'};
+const usdTick={ticks:{callback:v=>fUSDk(v)},grid:GRID};
+const charts={};
+let SURFACE='#2e2e31';
+function makeChart(id,cfg){const el=document.getElementById(id);if(!el)return;if(charts[id])charts[id].destroy();charts[id]=new Chart(el,cfg);return charts[id];}
+
+/* ===================== KPIs ===================== */
+function renderKpis(){
+  const t=BASE_MODEL.totals;
+  const cards=[
+    {label:'6-mo Gross Revenue',val:fUSDk(t.gross),note:fNum(t.sold)+' challenges',cls:''},
+    {label:'6-mo Net Revenue',val:fUSDk(t.net),note:'after variable costs',cls:''},
+    {label:'6-mo EBITDA',val:fUSDk(t.ebitda),note:fPct(t.margin)+' blended margin',cls:'pos'},
+    {label:'Capital Required',val:fUSDk(ONE_TIME+t.opex+t.mkt),note:'+20% cushion = '+fUSDk((ONE_TIME+t.opex+t.mkt)*1.2),cls:'alt'},
+    {label:'Challenges Sold',val:fNum(t.sold),note:'Day-1 + 20% MoM',cls:'alt'},
+    {label:'Active Funded (M6)',val:fNum(t.activeEnd),note:'end-of-period',cls:'alt'},
+    {label:'Trader Payouts',val:fUSDk(t.payout),note:'profit-share + refunds',cls:'alt'},
+    {label:'Net Rev / Challenge',val:fUSD(BASE_MODEL.net[0]/BASE_MODEL.sold[0]),note:'unit contribution',cls:''},
+  ];
+  document.getElementById('kpiGrid').innerHTML=cards.map(c=>`<div class="kpi ${c.cls}"><div class="label">${c.label}</div><div class="val">${c.val}</div><div class="note">${c.note}</div></div>`).join('');
+
+  makeChart('kpiSoldChart',{type:'bar',data:{labels:MLAB,datasets:[{data:BASE_MODEL.sold,backgroundColor:C.red,borderRadius:4}]},options:{plugins:{legend:{display:false},datalabels:{...DL_BAR,anchor:'end',align:'top',color:'#fff',formatter:fNum}},layout:{padding:{top:14}},scales:{y:{grid:GRID},x:{grid:{display:false}}}}});
+  makeChart('kpiEbitdaChart',{type:'bar',data:{labels:MLAB,datasets:[{data:BASE_MODEL.ebitda,backgroundColor:C.crimson,borderRadius:4}]},options:{plugins:{legend:{display:false},datalabels:{...DL_BAR,anchor:'end',align:'top'}},layout:{padding:{top:14}},scales:{y:usdTick,x:{grid:{display:false}}}}});
+  makeChart('kpiMarginChart',{type:'line',data:{labels:MLAB,datasets:[{data:BASE_MODEL.margin.map(m=>m*100),borderColor:C.redLight,backgroundColor:'rgba(234,149,149,.15)',fill:true,tension:.3,pointBackgroundColor:C.red}]},options:{plugins:{legend:{display:false},datalabels:{...DL_LINE,formatter:v=>v.toFixed(1)+'%'}},layout:{padding:{top:14}},scales:{y:{ticks:{callback:v=>v+'%'},grid:GRID},x:{grid:{display:false}}}}});
+}
+
+/* ===================== REVENUE ===================== */
+function renderRevenue(){
+  const m=BASE_MODEL;
+  makeChart('salesChart',{type:'bar',data:{labels:MLAB,datasets:[{label:'Challenges sold',data:m.sold,backgroundColor:C.red,borderRadius:4}]},options:{plugins:{legend:{display:false},datalabels:{anchor:'end',align:'top',color:'#fff',formatter:fNum}},layout:{padding:{top:16}},scales:{y:{grid:GRID},x:{grid:{display:false}}}}});
+  makeChart('revChart',{type:'bar',data:{labels:MLAB,datasets:[{label:'Gross',data:m.gross,backgroundColor:C.redLight,datalabels:{color:'#3a0d0d'},borderRadius:4},{label:'Net',data:m.net,backgroundColor:C.accent,borderRadius:4}]},options:{plugins:{datalabels:{anchor:'end',align:'top',font:{weight:'bold',size:8}}},layout:{padding:{top:16}},scales:{y:usdTick,x:{grid:{display:false}}}}});
+  buildTable('revTable',[
+    ['Challenges sold',m.sold,fNum],
+    ['Gross revenue',m.gross,fUSD],
+    ['Less: refunds & chargebacks',m.refunds,fUSD],
+    ['Less: payment processing',m.proc,fUSD],
+    ['Less: affiliate commissions',m.aff,fUSD],
+    ['Net revenue',m.net,fUSD,true],
+  ]);
+}
+
+/* ===================== PROFITABILITY ===================== */
+function renderProfit(){
+  const m=BASE_MODEL;
+  makeChart('costChart',{type:'bar',data:{labels:MLAB,datasets:[
+    {label:'Operating',data:OPEX,backgroundColor:C.grayDark,stack:'c'},
+    {label:'Marketing',data:m.mkt,backgroundColor:C.pink,stack:'c'},
+    {label:'Payouts',data:m.payout,backgroundColor:C.redDark,stack:'c'},
+    {label:'Net revenue',type:'line',data:m.net,borderColor:C.redLight,backgroundColor:C.redLight,tension:.3,pointBackgroundColor:C.red,order:0,datalabels:DL_LINE}]},
+    options:{plugins:{datalabels:{...DL_BAR,font:{weight:'bold',size:8}}},scales:{y:usdTick,x:{stacked:true,grid:{display:false}}}}});
+  makeChart('profitChart',{data:{labels:MLAB,datasets:[
+    {type:'bar',label:'EBITDA',data:m.ebitda,backgroundColor:C.crimson,borderRadius:4,yAxisID:'y',datalabels:{anchor:'end',align:'top'}},
+    {type:'line',label:'Margin %',data:m.margin.map(x=>x*100),borderColor:C.redLight,backgroundColor:'rgba(234,149,149,.15)',tension:.3,pointBackgroundColor:C.red,yAxisID:'y1',datalabels:{...DL_LINE,formatter:v=>v.toFixed(1)+'%'}}]},
+    options:{layout:{padding:{top:14}},scales:{y:{position:'left',...usdTick},y1:{position:'right',ticks:{callback:v=>v+'%'},grid:{drawOnChartArea:false}},x:{grid:{display:false}}}}});
+  const t=m.totals;
+  makeChart('costSplitChart',{type:'doughnut',data:{labels:['Operating','Marketing','Payouts','EBITDA'],datasets:[{data:[t.opex,t.mkt,t.payout,t.ebitda],backgroundColor:[C.grayDark,C.pink,C.redDark,C.crimson],borderColor:SURFACE,borderWidth:2}]},options:{plugins:{legend:{position:'right'},tooltip:{callbacks:{label:c=>c.label+': '+fUSDk(c.parsed)}},datalabels:{color:'#fff',font:{weight:'bold',size:10},formatter:v=>fUSDk1(v)}},cutout:'55%'}});
+  buildTable('plTable',[
+    ['Net revenue',m.net,fUSD],
+    ['Operating expenses',OPEX.map(x=>-x),fUSD],
+    ['Marketing expenses',m.mkt.map(x=>-x),fUSD],
+    ['Trader payouts',m.payout.map(x=>-x),fUSD],
+    ['EBITDA',m.ebitda,fUSD,true],
+  ],m.margin);
+}
+
+/* ===================== FREE CASH FLOW ===================== */
+function renderCash(){
+  const m=BASE_MODEL,t=m.totals;
+  makeChart('cumChart',{type:'line',data:{labels:MLAB,datasets:[{label:'Cumulative EBITDA',data:m.cum,borderColor:C.pos,backgroundColor:'rgba(26,171,64,.12)',fill:true,tension:.25,pointBackgroundColor:C.pos,datalabels:{...DL_LINE}}]},options:{plugins:{legend:{display:false}},layout:{padding:{top:14}},scales:{y:usdTick,x:{grid:{display:false}}}}});
+  const items=[{l:'Setup',v:ONE_TIME},{l:'OpEx',v:t.opex},{l:'Marketing',v:t.mkt},{l:'Net revenue',v:-t.net}];
+  let running=0; const bases=[],bars=[],cols=[];
+  items.forEach(it=>{const start=running;running+=it.v;bases.push(Math.min(start,running));bars.push(Math.abs(it.v));cols.push(it.v>=0?C.crimson:C.pos);});
+  bases.push(Math.min(0,running));bars.push(Math.abs(running));cols.push(running<0?C.pos:C.red);
+  const signed=[...items.map(i=>i.v),running];
+  const labels=[...items.map(i=>i.l),'Net capital'];
+  makeChart('capChart',{type:'bar',data:{labels,datasets:[
+      {label:'b',data:bases,backgroundColor:'transparent',stack:'w',datalabels:{display:false}},
+      {label:'f',data:bars,backgroundColor:cols,stack:'w',borderRadius:4,datalabels:{anchor:'end',align:'top',color:'#fff',formatter:(v,ctx)=>fUSDk1(signed[ctx.dataIndex])}}]},
+    options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.datasetIndex===1?fUSDk(signed[c.dataIndex]):''}}},layout:{padding:{top:14}},scales:{y:usdTick,x:{grid:{display:false}}}}});
+  const cards=[
+    {label:'6-mo Cumulative FCF',val:fUSDk(m.cum[5]),cls:'pos'},
+    {label:'Cash-flow positive from',val:'Month 1',cls:'pos'},
+    {label:'Net capital required',val:t.capital<0?'$0 — self-funded':fUSDk(t.capital),cls:t.capital<0?'pos':'alt'},
+  ];
+  document.getElementById('cashKpis').innerHTML=cards.map(c=>`<div class="kpi ${c.cls}"><div class="label">${c.label}</div><div class="val">${c.val}</div></div>`).join('');
+  document.getElementById('capNote').innerHTML = t.capital<0
+    ? `Base-case 6-month net revenue of <b>${fUSDk(t.net)}</b> exceeds setup + operating + marketing outflows of <b>${fUSDk(ONE_TIME+t.opex+t.mkt)}</b>, leaving a <b>${fUSDk(-t.capital)}</b> surplus — the launch is self-funded. A 15–20% buffer above day-0 outflows is still recommended for ramp risk.`
+    : `Day-0 funding of <b>${fUSDk(t.capital)}</b> is required to safely launch and operate for 6 months.`;
+}
+
+/* ---------------- table builder ---------------- */
+function buildTable(id,rows,marginRow){
+  const head='<thead><tr><th>Line item</th>'+MLAB.map(m=>`<th>${m}</th>`).join('')+'<th>Total</th></tr></thead>';
+  let body='<tbody>';
+  rows.forEach(r=>{const [name,arr,fmt,isTotal]=r;const cls=isTotal?' class="total"':'';body+=`<tr${cls}><td>${name}</td>`;arr.forEach(v=>{body+=`<td class="${v<0?'neg':''}">${fmt(v)}</td>`;});const tot=sum(arr);body+=`<td class="${tot<0?'neg':''}">${fmt(tot)}</td></tr>`;});
+  if(marginRow){body+=`<tr><td>EBITDA margin</td>`+marginRow.map(v=>`<td>${fPct(v)}</td>`).join('')+`<td>${fPct(BASE_MODEL.totals.margin)}</td></tr>`;}
+  body+='</tbody>';
+  document.getElementById(id).innerHTML=head+body;
+}
+
+/* ===================== SENSITIVITY ===================== */
+const SLIDER_DEFS=[
+  {key:'growth',label:'MoM sales growth',min:0,max:0.5,step:0.01,fmt:fPct},
+  {key:'arpu',label:'Weighted ARPU ($)',min:120,max:400,step:5,fmt:v=>'$'+v.toFixed(0)},
+  {key:'day1Sales',label:'Day-1 founder sales',min:2000,max:9000,step:50,fmt:fNum},
+  {key:'p1pass',label:'Phase 1 pass rate',min:0.10,max:0.45,step:0.01,fmt:fPct},
+  {key:'p2pass',label:'Phase 2 pass rate',min:0.20,max:0.70,step:0.01,fmt:fPct},
+  {key:'gpRate',label:'Funded gross profit %',min:0.02,max:0.10,step:0.005,fmt:fPct},
+  {key:'split',label:'Profit split to trader',min:0.60,max:0.90,step:0.01,fmt:fPct},
+  {key:'pctEarning',label:'% funded earning/mo',min:0.20,max:0.70,step:0.01,fmt:fPct},
+  {key:'churn',label:'Funded churn / mo',min:0.05,max:0.30,step:0.01,fmt:fPct},
+  {key:'affShare',label:'Affiliate-driven rev %',min:0.10,max:0.60,step:0.01,fmt:fPct},
+  {key:'processing',label:'Payment processing %',min:0.01,max:0.06,step:0.005,fmt:fPct},
+];
+let scenario={...BASE};
+
+function renderSliders(){
+  document.getElementById('sliders').innerHTML=SLIDER_DEFS.map(d=>`
+    <div class="ctrl">
+      <div class="row"><label>${d.label}</label><span class="cur" id="cur_${d.key}">${d.fmt(scenario[d.key])}</span></div>
+      <input type="range" id="sl_${d.key}" min="${d.min}" max="${d.max}" step="${d.step}" value="${scenario[d.key]}">
+      <div class="base">base: ${d.fmt(BASE[d.key])}</div>
+    </div>`).join('');
+  SLIDER_DEFS.forEach(d=>{document.getElementById('sl_'+d.key).addEventListener('input',e=>{scenario[d.key]=parseFloat(e.target.value);document.getElementById('cur_'+d.key).textContent=d.fmt(scenario[d.key]);updateSensitivity();});});
+}
+function sKpi(label,val,delta){let cls='flat',sign='';if(delta>0.0005){cls='up';sign='+';}else if(delta<-0.0005){cls='down';}return `<div class="skpi"><div class="label">${label}</div><div class="val">${val}</div><div class="delta ${cls}">${sign}${(delta*100).toFixed(1)}% vs base</div></div>`;}
+function updateSensitivity(){
+  const m=computeModel(scenario),b=BASE_MODEL.totals,t=m.totals,d=(a,base)=>base?(a-base)/Math.abs(base):0;
+  document.getElementById('sensKpis').innerHTML=
+    sKpi('6-mo Gross Rev',fUSDk(t.gross),d(t.gross,b.gross))+
+    sKpi('6-mo EBITDA',fUSDk(t.ebitda),d(t.ebitda,b.ebitda))+
+    sKpi('EBITDA Margin',fPct(t.margin),(t.margin-b.margin))+
+    sKpi('Cumulative FCF',fUSDk(m.cum[5]),d(m.cum[5],BASE_MODEL.cum[5]));
+  makeChart('sensEbitdaChart',{type:'bar',data:{labels:MLAB,datasets:[{label:'Base',data:BASE_MODEL.ebitda,backgroundColor:C.gray,borderRadius:4},{label:'Scenario',data:m.ebitda,backgroundColor:C.red,borderRadius:4}]},options:{plugins:{datalabels:{anchor:'end',align:'top',font:{weight:'bold',size:8}}},layout:{padding:{top:16}},scales:{y:usdTick,x:{grid:{display:false}}}}});
+}
+function renderTornado(){
+  const flex=0.20,base=BASE_MODEL.totals.ebitda;
+  const rows=SLIDER_DEFS.map(d=>{const lo={...BASE},hi={...BASE};lo[d.key]=BASE[d.key]*(1-flex);hi[d.key]=BASE[d.key]*(1+flex);return {label:d.label,lo:computeModel(lo).totals.ebitda-base,hi:computeModel(hi).totals.ebitda-base};}).sort((a,b)=>Math.abs(a.hi-a.lo)-Math.abs(b.hi-b.lo));
+  makeChart('tornadoChart',{type:'bar',data:{labels:rows.map(r=>r.label),datasets:[{label:'−20%',data:rows.map(r=>r.lo),backgroundColor:C.neg,borderRadius:3},{label:'+20%',data:rows.map(r=>r.hi),backgroundColor:C.pos,borderRadius:3}]},options:{indexAxis:'y',layout:{padding:{left:6,right:34}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.parsed.x>=0?'+':'')+fUSDk(c.parsed.x)}},datalabels:{anchor:'end',align:'end',color:'#fff',font:{weight:'bold',size:8},formatter:v=>fUSDk1(v)}},scales:{x:{ticks:{callback:v=>fUSDk(v)},grid:GRID},y:{grid:{display:false}}}}});
+}
+document.getElementById('resetBtn').addEventListener('click',()=>{scenario={...BASE};SLIDER_DEFS.forEach(d=>{document.getElementById('sl_'+d.key).value=BASE[d.key];document.getElementById('cur_'+d.key).textContent=d.fmt(BASE[d.key]);});updateSensitivity();});
+
+/* ---------------- tab switching ---------------- */
+const navLinks=[...document.querySelectorAll('.nav a')];
+const panels=[...document.querySelectorAll('.tab-panel')];
+function showTab(id){
+  panels.forEach(p=>p.classList.toggle('active',p.id===id));
+  navLinks.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+id));
+  requestAnimationFrame(()=>{Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}});});
+}
+navLinks.forEach(a=>a.addEventListener('click',e=>{e.preventDefault();showTab(a.getAttribute('href').slice(1));}));
+window.addEventListener('resize',()=>{Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}});});
+
+/* ---------------- theme toggle ---------------- */
+const themeBtn=document.getElementById('themeBtn');
+function renderAllCharts(){renderKpis();renderRevenue();renderProfit();renderCash();renderTornado();updateSensitivity();}
+function applyTheme(t){
+  const light = t==='light';
+  document.body.classList.toggle('light',light);
+  themeBtn.textContent = light ? '🌙 Dark' : '☀ Light';
+  Chart.defaults.color = light ? '#3a3a40' : '#c9c9cd';
+  GRID.color = light ? 'rgba(0,0,0,.09)' : 'rgba(255,255,255,.07)';
+  SURFACE = light ? '#ffffff' : '#2e2e31';
+  renderAllCharts();
+  requestAnimationFrame(()=>{Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}});});
+  try{localStorage.setItem('fz-theme',t);}catch(e){}
+}
+themeBtn.addEventListener('click',()=>applyTheme(document.body.classList.contains('light')?'dark':'light'));
+
+/* ---------------- init ---------------- */
+renderSliders();
+let savedTheme=null; try{savedTheme=localStorage.getItem('fz-theme');}catch(e){}
+applyTheme(savedTheme||'dark');
+showTab('cover');
+</script>
+</body>
+</html>
